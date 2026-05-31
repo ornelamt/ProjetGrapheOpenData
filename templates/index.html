@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vélib' Optimal</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f5f5f5; }
+        .container { display: flex; height: 100vh; }
+        .sidebar {
+            width: 400px; background: white; padding: 20px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1); overflow-y: auto; z-index: 1000;
+        }
+        h1 { color: #2c7a2c; font-size: 22px; margin-bottom: 5px; }
+        h1 span { color: #333; }
+        .subtitle { color: #888; font-size: 13px; margin-bottom: 10px; }
+        .horloge {
+            background: #f0f9f0; border: 1px solid #2c7a2c;
+            border-radius: 8px; padding: 8px 12px;
+            font-size: 13px; color: #2c7a2c; font-weight: bold;
+            margin-bottom: 16px; text-align: center;
+        }
+        label { font-size: 13px; color: #555; font-weight: bold; display: block; margin-bottom: 5px; }
+        input, select {
+            width: 100%; padding: 10px; border: 1px solid #ddd;
+            border-radius: 8px; font-size: 14px; margin-bottom: 12px;
+        }
+        input:focus, select:focus { outline: none; border-color: #2c7a2c; }
+        .mode-buttons { display: flex; gap: 8px; margin-bottom: 12px; }
+        .mode-btn {
+            flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 8px;
+            background: white; cursor: pointer; font-size: 12px; font-weight: bold;
+            color: #555; text-align: center; transition: all 0.2s;
+        }
+        .mode-btn.active { border-color: #2c7a2c; background: #2c7a2c; color: white; }
+        .mode-btn:hover { border-color: #2c7a2c; }
+        .tolerance-box { display: none; margin-bottom: 12px; }
+        button#btn {
+            width: 100%; padding: 12px; background: #2c7a2c; color: white;
+            border: none; border-radius: 8px; font-size: 15px; cursor: pointer; font-weight: bold;
+        }
+        button#btn:hover { background: #1e5c1e; }
+        button#btn:disabled { background: #aaa; cursor: not-allowed; }
+        .loading { display: none; text-align: center; color: #888; margin-top: 15px; font-size: 14px; }
+        .results { display: none; margin-top: 20px; }
+        .legende {
+            background: #f9f9f9; border-radius: 8px; padding: 10px;
+            margin-bottom: 12px; font-size: 12px; border: 1px solid #eee;
+        }
+        .legende-titre { font-weight: bold; margin-bottom: 6px; color: #555; }
+        .legende-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .trajet-card {
+            border-radius: 10px; padding: 15px; margin-bottom: 12px; border: 2px solid #ddd;
+        }
+        .trajet-card.rapide { border-color: #e74c3c; background: #fff8f8; }
+        .trajet-card.securise { border-color: #2c7a2c; background: #f8fff8; }
+        .trajet-card-titre { font-weight: bold; font-size: 15px; margin-bottom: 8px; }
+        .trajet-card-detail { font-size: 13px; color: #555; margin-bottom: 4px; }
+        .pct-bar-container { margin-top: 8px; }
+        .pct-bar-label { font-size: 11px; color: #777; margin-bottom: 3px; }
+        .pct-bar { height: 8px; background: #eee; border-radius: 4px; overflow: hidden; }
+        .pct-bar-fill { height: 100%; background: #2c7a2c; border-radius: 4px; transition: width 0.5s; }
+        .tolerance-info {
+            background: #eaf4ea; border: 1px solid #2c7a2c; color: #1e5c1e;
+            padding: 8px 10px; border-radius: 8px; font-size: 12px; margin-bottom: 10px; display: none;
+        }
+        .conseil-msg { background: #f39c12; color: white; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; display: none; }
+        .erreur-msg { background: #c0392b; color: white; padding: 10px; border-radius: 8px; font-size: 13px; margin-top: 10px; display: none; }
+        .etape { background: #f9f9f9; border-radius: 10px; padding: 12px; margin-bottom: 10px; border-left: 4px solid #ddd; }
+        .etape.pied { border-left-color: #888; }
+        .etape.alerte { border-left-color: #e74c3c; background: #fff5f5; }
+        .etape-titre { font-weight: bold; font-size: 14px; margin-bottom: 4px; }
+        .etape-detail { font-size: 13px; color: #666; }
+        .etape-fiabilite { font-size: 12px; margin-top: 4px; }
+        .alerte-msg { background: #e74c3c; color: white; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; display: none; }
+        .alternatives { margin-top: 8px; padding: 8px; background: #f0f0f0; border-radius: 8px; font-size: 12px; }
+        .alternatives-titre { font-weight: bold; font-size: 12px; color: #555; margin-bottom: 5px; }
+        .alternative-item { padding: 5px 0; border-bottom: 1px solid #ddd; color: #444; }
+        .alternative-item:last-child { border-bottom: none; }
+        .troncons-card {
+            border-radius: 10px; padding: 15px; margin-bottom: 12px;
+            border: 2px solid #e67e22; background: #fff8f0; display: none;
+        }
+        .troncons-titre { font-weight: bold; font-size: 14px; margin-bottom: 4px; color: #e67e22; }
+        .troncons-total { font-size: 12px; color: #888; margin-bottom: 10px; }
+        .btn-troncons {
+            width: 100%; padding: 8px; background: #e67e22; color: white;
+            border: none; border-radius: 6px; font-size: 13px; cursor: pointer;
+            font-weight: bold; margin-bottom: 8px;
+        }
+        .btn-troncons:hover { background: #d35400; }
+        #map { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h1>🚲 Vélib' <span>Optimal</span></h1>
+            <p class="subtitle">Trouvez le meilleur itinéraire vélo entre deux adresses</p>
+
+            <!-- Horloge temps réel -->
+            <div class="horloge">
+                🕐 Il est <span id="clock"></span> — Données Vélib' en temps réel
+            </div>
+
+            <label>📍 Adresse de départ</label>
+            <input type="text" id="depart" placeholder="Ex: 10 rue de Rivoli, Paris"/>
+
+            <label>📍 Adresse d'arrivée</label>
+            <input type="text" id="arrivee" placeholder="Ex: 50 avenue des Champs-Elysées, Paris"/>
+
+            <label>🗺️ Mode de trajet</label>
+            <div class="mode-buttons">
+                <div class="mode-btn active" id="btn-rapide" onclick="setMode('rapide')">🚀 Rapide</div>
+                <div class="mode-btn" id="btn-securise" onclick="setMode('securise')">🔒 Sécurisé</div>
+                <div class="mode-btn" id="btn-les_deux" onclick="setMode('les_deux')">⚖️ Les deux</div>
+            </div>
+
+            <div class="tolerance-box" id="tolerance-box">
+                <label>📏 Tolérance km supplémentaires (%)</label>
+                <input type="number" id="tolerance" value="10" min="0" max="100" placeholder="Ex: 10"/>
+                <small style="color:#888;font-size:11px">Le trajet sécurisé sera proposé s'il est dans cette limite de km en plus.</small>
+            </div>
+
+            <button onclick="calculer()" id="btn">Calculer l'itinéraire</button>
+
+            <div class="loading" id="loading">⏳ Calcul en cours...</div>
+            <div class="erreur-msg" id="erreur"></div>
+            <div class="conseil-msg" id="conseil"></div>
+            <div class="alerte-msg" id="alerte">⚠️ Station d'arrivée presque pleine ! Moins de 20% de bornettes libres.</div>
+            <div class="tolerance-info" id="tolerance-info"></div>
+
+            <div class="results" id="results">
+
+                <!-- Légende -->
+                <div class="legende">
+                    <div class="legende-titre">📖 Légende</div>
+                    <div class="legende-item">
+                        <div style="width:30px; height:3px; background:#2c7a2c;"></div>
+                        <span>Piste cyclable sécurisée</span>
+                    </div>
+                    <div class="legende-item">
+                        <div style="width:30px; height:3px; background: repeating-linear-gradient(90deg, #e74c3c 0, #e74c3c 5px, transparent 5px, transparent 10px);"></div>
+                        <span>Route sans piste cyclable</span>
+                    </div>
+                    <div class="legende-item">
+                        <div style="width:30px; height:3px; background:#e67e22;"></div>
+                        <span>Tronçons à sécuriser</span>
+                    </div>
+                    <div class="legende-item">
+                        <div style="width:30px; height:3px; background: repeating-linear-gradient(90deg, #888 0, #888 5px, transparent 5px, transparent 10px);"></div>
+                        <span>Trajet à pied</span>
+                    </div>
+                </div>
+
+                <!-- Trajet rapide -->
+                <div class="trajet-card rapide" id="card-rapide" style="display:none">
+                    <div class="trajet-card-titre">🚀 Trajet Rapide</div>
+                    <div class="trajet-card-detail" id="rapide-detail"></div>
+                    <div class="pct-bar-container">
+                        <div class="pct-bar-label" id="rapide-pct-label"></div>
+                        <div class="pct-bar"><div class="pct-bar-fill" id="rapide-pct-bar"></div></div>
+                    </div>
+                </div>
+
+                <!-- Trajet sécurisé -->
+                <div class="trajet-card securise" id="card-securise" style="display:none">
+                    <div class="trajet-card-titre">🔒 Trajet Sécurisé</div>
+                    <div class="trajet-card-detail" id="securise-detail"></div>
+                    <div class="pct-bar-container">
+                        <div class="pct-bar-label" id="securise-pct-label"></div>
+                        <div class="pct-bar"><div class="pct-bar-fill" id="securise-pct-bar"></div></div>
+                    </div>
+                </div>
+
+                <!-- Tronçons manquants -->
+                <div class="troncons-card" id="card-troncons">
+                    <div class="troncons-titre" id="troncons-titre">🟠 Tronçons à sécuriser</div>
+                    <div class="troncons-total" id="troncons-total"></div>
+                    <button class="btn-troncons" id="btn-troncons" onclick="toggleTroncons()">
+                        Afficher sur la carte
+                    </button>
+                </div>
+
+                <!-- Stations -->
+                <div class="etape pied">
+                    <div class="etape-titre">🚶 À pied — Départ → Station</div>
+                    <div class="etape-detail" id="info-pied1"></div>
+                    <div class="etape-fiabilite" id="fiabilite-depart"></div>
+                    <div class="alternatives" id="alt-depart"></div>
+                </div>
+
+                <div class="etape pied" id="etape-arrivee">
+                    <div class="etape-titre">🚶 À pied — Station → Arrivée</div>
+                    <div class="etape-detail" id="info-pied2"></div>
+                    <div class="etape-fiabilite" id="fiabilite-arrivee"></div>
+                    <div class="alternatives" id="alt-arrivee"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="map"></div>
+    </div>
+
+    <script>
+        // Horloge temps réel
+        function updateClock() {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('clock').textContent = h + 'h' + m + 'min' + s + 's';
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        const map = L.map('map').setView([48.8566, 2.3522], 12);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap © CARTO'
+        }).addTo(map);
+
+        let layers = [];
+        let layersTroncons = [];
+        let modeActuel = 'rapide';
+        let tronconsModeActif = false;
+        let tronconsCourants = [];
+
+        function setMode(mode) {
+            modeActuel = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+            document.getElementById('tolerance-box').style.display = mode === 'les_deux' ? 'block' : 'none';
+        }
+
+        function clearLayers() {
+            layers.forEach(l => map.removeLayer(l));
+            layers = [];
+            clearTroncons();
+        }
+
+        function clearTroncons() {
+            layersTroncons.forEach(l => map.removeLayer(l));
+            layersTroncons = [];
+            tronconsModeActif = false;
+            const btn = document.getElementById('btn-troncons');
+            if (btn) btn.textContent = 'Afficher sur la carte';
+        }
+
+        function toggleTroncons() {
+            const btn = document.getElementById('btn-troncons');
+            if (tronconsModeActif) {
+                clearTroncons();
+            } else {
+                tronconsCourants.forEach(seg => {
+                    const latlngs = seg.map(c => [c[1], c[0]]);
+                    const line = L.polyline(latlngs, {
+                        color: '#e67e22', weight: 7, opacity: 0.9
+                    }).addTo(map).bindTooltip('⚠️ Tronçon sans piste cyclable — à sécuriser');
+                    layersTroncons.push(line);
+                });
+                tronconsModeActif = true;
+                btn.textContent = 'Masquer de la carte';
+            }
+        }
+
+        function addPolyline(coords, color, dash, weight) {
+            const latlngs = coords.map(c => [c[1], c[0]]);
+            const line = L.polyline(latlngs, {
+                color: color, weight: weight || 4, opacity: 0.85, dashArray: dash || null
+            }).addTo(map);
+            layers.push(line);
+            return line;
+        }
+
+        function addMarker(lat, lon, color, icon, popup) {
+            const marker = L.marker([lat, lon], {
+                icon: L.divIcon({
+                    className: '',
+                    html: `<div style="background:${color};width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 2px 5px rgba(0,0,0,0.3)">${icon}</div>`,
+                    iconSize: [30, 30], iconAnchor: [15, 15]
+                })
+            }).addTo(map).bindPopup(popup);
+            layers.push(marker);
+        }
+
+        function afficherTrajet(trajet, color) {
+            if (!trajet) return;
+            if (trajet.connexion_depart) addPolyline(trajet.connexion_depart, color, '5 5', 3);
+            if (trajet.connexion_arrivee) addPolyline(trajet.connexion_arrivee, color, '5 5', 3);
+            if (trajet.segments_cyclables) {
+                trajet.segments_cyclables.forEach(seg => addPolyline(seg, '#2c7a2c', null, 4));
+            }
+            if (trajet.segments_non_cyclables) {
+                trajet.segments_non_cyclables.forEach(seg => addPolyline(seg, color, '8 5', 4));
+            }
+        }
+
+        async function calculer() {
+            const depart = document.getElementById('depart').value;
+            const arrivee = document.getElementById('arrivee').value;
+            const tolerance = document.getElementById('tolerance').value;
+
+            // Heure actuelle automatique
+            const now = new Date();
+            const heure = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+
+            if (!depart || !arrivee) { alert('Veuillez entrer les deux adresses !'); return; }
+
+            document.getElementById('btn').disabled = true;
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('alerte').style.display = 'none';
+            document.getElementById('conseil').style.display = 'none';
+            document.getElementById('erreur').style.display = 'none';
+            document.getElementById('tolerance-info').style.display = 'none';
+            document.getElementById('card-rapide').style.display = 'none';
+            document.getElementById('card-securise').style.display = 'none';
+            document.getElementById('card-troncons').style.display = 'none';
+            clearLayers();
+
+            try {
+                const response = await fetch('/calculer', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({depart, arrivee, heure, mode: modeActuel, tolerance})
+                });
+
+                const data = await response.json();
+
+                if (data.erreur) {
+                    document.getElementById('erreur').textContent = '❌ ' + data.erreur;
+                    document.getElementById('erreur').style.display = 'block';
+                    document.getElementById('btn').disabled = false;
+                    document.getElementById('loading').style.display = 'none';
+                    return;
+                }
+
+                // Trajets à pied
+                if (data.trajet_pied1.coords) addPolyline(data.trajet_pied1.coords, '#888', '8 4', 3);
+                if (data.trajet_pied2.coords) addPolyline(data.trajet_pied2.coords, '#888', '8 4', 3);
+
+                // Afficher trajets
+                if (modeActuel === 'rapide' || modeActuel === 'les_deux') {
+                    afficherTrajet(data.trajet_rapide, '#e74c3c');
+                    if (data.trajet_rapide) {
+                        document.getElementById('card-rapide').style.display = 'block';
+                        document.getElementById('rapide-detail').textContent =
+                            `${data.trajet_rapide.distance} km — ${data.trajet_rapide.temps_total} min au total`;
+                        document.getElementById('rapide-pct-label').textContent =
+                            `🛣️ ${data.trajet_rapide.pct_cyclable}% sur pistes cyclables`;
+                        document.getElementById('rapide-pct-bar').style.width = data.trajet_rapide.pct_cyclable + '%';
+                    }
+                }
+
+                if (modeActuel === 'securise' || modeActuel === 'les_deux') {
+                    afficherTrajet(data.trajet_securise, '#e67e22');
+                    if (data.trajet_securise) {
+                        document.getElementById('card-securise').style.display = 'block';
+                        document.getElementById('securise-detail').textContent =
+                            `${data.trajet_securise.distance} km — ${data.trajet_securise.temps_total} min au total`;
+                        document.getElementById('securise-pct-label').textContent =
+                            `🛣️ ${data.trajet_securise.pct_cyclable}% sur pistes cyclables`;
+                        document.getElementById('securise-pct-bar').style.width = data.trajet_securise.pct_cyclable + '%';
+                    }
+                }
+
+                // Info tolérance
+                if (data.info_tolerance && modeActuel === 'les_deux') {
+                    document.getElementById('tolerance-info').textContent = data.info_tolerance;
+                    document.getElementById('tolerance-info').style.display = 'block';
+                }
+
+                // Tronçons manquants
+                if (data.troncons_manquants && data.troncons_manquants.length > 0) {
+                    tronconsCourants = data.troncons_manquants;
+                    document.getElementById('card-troncons').style.display = 'block';
+                    document.getElementById('troncons-titre').textContent =
+                        `🟠 ${data.total_manquant} sans piste cyclable sur ce trajet`;
+                    document.getElementById('troncons-total').textContent =
+                        `Cliquez pour afficher les tronçons à sécuriser en priorité`;
+                }
+
+                // Marqueurs
+                addMarker(data.depart.lat, data.depart.lon, '#e74c3c', '📍', 'Départ');
+                addMarker(data.station_depart.lat, data.station_depart.lon, '#2c7a2c', '🚲',
+                    `Station départ<br><b>${data.station_depart.nom}</b><br>${data.station_depart.velos} vélos dispo<br>${data.station_depart.fiabilite}`);
+                addMarker(data.station_arrivee.lat, data.station_arrivee.lon, '#e67e22', '🅿️',
+                    `Station arrivée<br><b>${data.station_arrivee.nom}</b><br>${data.station_arrivee.bornettes} bornettes libres<br>${data.station_arrivee.fiabilite}`);
+                addMarker(data.arrivee.lat, data.arrivee.lon, '#8e44ad', '📍', 'Arrivée');
+
+                data.alternatives_depart.forEach(alt => {
+                    addMarker(alt.lat, alt.lon, '#a8d5a2', '🚲',
+                        `Alternative départ<br><b>${alt.nom}</b><br>${alt.velos} vélos dispo<br>${alt.fiabilite}`);
+                });
+                data.alternatives_arrivee.forEach(alt => {
+                    addMarker(alt.lat, alt.lon, '#f5cba7', '🅿️',
+                        `Alternative arrivée<br><b>${alt.nom}</b><br>${alt.bornettes} bornettes libres<br>${alt.fiabilite}`);
+                });
+
+                // Centrer la carte
+                map.fitBounds([
+                    [data.depart.lat, data.depart.lon],
+                    [data.arrivee.lat, data.arrivee.lon]
+                ], {padding: [50, 50]});
+
+                // Infos stations
+                document.getElementById('info-pied1').textContent =
+                    `${data.station_depart.nom} — ${data.station_depart.dist}m (${data.station_depart.velos} vélos dispo)`;
+                document.getElementById('fiabilite-depart').textContent = data.station_depart.fiabilite;
+                document.getElementById('info-pied2').textContent =
+                    `${data.station_arrivee.nom} — ${data.station_arrivee.dist}m (${data.station_arrivee.bornettes} bornettes libres)`;
+                document.getElementById('fiabilite-arrivee').textContent = data.station_arrivee.fiabilite;
+
+                // Alternatives
+                let htmlAltDepart = '<div class="alternatives-titre">🔄 Stations alternatives départ :</div>';
+                data.alternatives_depart.forEach(alt => {
+                    htmlAltDepart += `<div class="alternative-item">📍 ${alt.nom} — ${alt.dist}m — ${alt.velos} vélos — ${alt.fiabilite}</div>`;
+                });
+                document.getElementById('alt-depart').innerHTML = htmlAltDepart;
+
+                let htmlAltArrivee = '<div class="alternatives-titre">🔄 Stations alternatives arrivée :</div>';
+                data.alternatives_arrivee.forEach(alt => {
+                    htmlAltArrivee += `<div class="alternative-item">📍 ${alt.nom} — ${alt.dist}m — ${alt.bornettes} bornettes — ${alt.fiabilite}</div>`;
+                });
+                document.getElementById('alt-arrivee').innerHTML = htmlAltArrivee;
+
+                // Alerte saturation
+                if (data.station_arrivee.alerte) {
+                    document.getElementById('alerte').style.display = 'block';
+                    document.getElementById('etape-arrivee').classList.add('alerte');
+                }
+
+                // Conseil heure de pointe
+                if (data.heure_pointe.conseil) {
+                    document.getElementById('conseil').textContent = data.heure_pointe.conseil;
+                    document.getElementById('conseil').style.display = 'block';
+                }
+
+                document.getElementById('results').style.display = 'block';
+
+            } catch(e) {
+                document.getElementById('erreur').textContent = '❌ Erreur inattendue. Vérifiez vos adresses et réessayez.';
+                document.getElementById('erreur').style.display = 'block';
+                console.error(e);
+            }
+
+            document.getElementById('btn').disabled = false;
+            document.getElementById('loading').style.display = 'none';
+        }
+    </script>
+</body>
+</html>  
